@@ -2,12 +2,31 @@
 
 const readline = require('readline');
 const puppeteer = require("puppeteer");
-const async = require('async');
+//const async = require('async');
+const fs = require('fs');
+const createCsvWriter = require("csv-writer").createObjectCsvWriter;
 
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
+
+// config to write to a csv
+const csvWriter = createCsvWriter({
+    path: `${__dirname}\\cmp-scrape-results.csv`,
+    header: [
+        { id: 'url', title: 'URL' },
+        { id: 'cmpStatus', title: 'CMP_STATUS'},
+        { id: 'cmpLoaded', title: 'CMP_LOADED'},
+        { id: 'gdprAppliesGlobally', title: "GDPR_APPLIES_GLOBALLY"}
+    ]
+});
+
+// default proxy server
+var PROXY_SERVER = "http://88.99.12.165:80";
+
+// temp testing fake proxy URL
+//PROXY_SERVER = 'http://12.12.12.12:80';
 
 // store user inputted domain list 
 var urlArray = [];
@@ -15,22 +34,64 @@ var status = [];
 
 // launch browser with proxy
 let browser;
-async function launchPuppeteer() {
+async function launchPuppeteer(proxy) {
+    console.log(`Connecting to Chrome with proxy url: ${proxy}`);
+
+    // launch browser
     browser = await puppeteer.launch({
+
         // can launch to see window by changing this
         headless: false,
         // proxy here. can either use http or socks5
         // can also use an auth with user:pass@ or await page.authenticate(user, pass)
         //--proxy-server=socks5://136.243.218.19:1080',
+        //http://88.99.12.165:80
 
-        //TODO: have the proxy server a variable set from CLI arg
-        args: ['--proxy-server=http://88.99.12.165:80',
+        args: [`--proxy-server=${proxy}`,
             '--ignore-certificate-errors'
         ]
     });
+
+    // test proxy server connection
+    const page = await browser.newPage();
+
+    // // check for errors
+    // page.on('error', msg => {
+    //     console.log(`here is the error ${msg}`);
+    // })
+    
+    try {
+        // go to a url
+        await page.goto('http://brealtime.com/');
+        // if no errors we continue to ask the user for a list of CMP urls to check
+        console.log('The proxy is working, were connected!')
+        
+        await page.close();
+        
+        getCmpUrls();
+
+    } catch (e) {
+        // issue with proxy or loading the page
+        //console.log(e);
+
+        await browser.close().then(() => {
+            console.log('Default proxy is not working. You can retry once more before restarting this script.');
+            console.log("Here is a list of proxy server urls: http://spys.one/free-proxy-list/DE/");
+
+            rl.question('Enter a new proxy IP and port as a string in this format (\"http|socks5://ip:port\"): ', function (proxy) {
+
+                // try again with new proxy from user
+                launchPuppeteer(proxy);
+
+                rl.close();
+            })
+        });
+        
+    }
+    
 }
 
-launchPuppeteer()
+launchPuppeteer(PROXY_SERVER);
 
 // function to check CMP status using Puppeteer
 async function checkUrlCmpStatus(currentUrl) {
@@ -79,8 +140,8 @@ async function checkUrlCmpStatus(currentUrl) {
      status.push({
          'url': currentUrl,
          'cmpStatus': typeof gdprStatus === 'object' ? 'Exists' : 'None',
-         'cmpLoaded': gdprStatus.cmpLoaded || 'None',
-         'gdprAppliesGlobally': gdprStatus.gdprAppliesGlobally || 'None'
+         'cmpLoaded': gdprStatus.cmpLoaded || 'No',
+         'gdprAppliesGlobally': gdprStatus.gdprAppliesGlobally || 'No'
      })
 
     // display results to the user
@@ -96,23 +157,47 @@ async function checkUrlCmpStatus(currentUrl) {
     await page.waitFor(1000);
 }
 
-// get user input for list of domains
-rl.question('Enter a list of URL strings comma separated: ', function(urls) {
-    // convert to array and display
-    urlArray = urls.split(',');
+// process array of URLs with async function sync
+async function processArray(array, fn) {
+    let results = [];
 
-    // loop through each url sync and run callback when completed
-    async.each(urlArray, checkUrlCmpStatus, function(err) {
-        if (err) console.log(err)
-        // confirm completed list and display obj with results
+    // loop through array of args and run function with it
+    for (let i = 0; i < array.length; i++) {
+        let r = await fn(array[i]);
+        results.push(r);
+    }
+    // can return result of promise function if needed
+    return results;
+}
 
-        //TODO: return results in a csv file and write to disk
-        console.log(`All URLs have been scanned. Here are the results: `)
-        console.log(status);
+function getCmpUrls() {
+    // get user input for list of domains
+    rl.question('Enter a list of URL strings comma separated: ', function (urls) {
+        // convert to array and display
+        urlArray = urls.split(',');
+
+        processArray(urlArray, checkUrlCmpStatus).then(async function (result) {
+            // all done
+            browser.close();
+
+            // confirm completed list and display obj with results
+            console.log(`All URLs have been scanned. Here are the results: `)
+            console.log(status);
+
+            // write to results to csv
+            await csvWriter.writeRecords(status).then(() => console.log('Completed scrape. Results dumped to csv'));
+
+            process.exit();
+
+        }, function (err) {
+            // an error occured
+            console.log(err)
+        });
+
+        rl.close();
     })
+}
 
-    rl.close();
-})
 
 
 
