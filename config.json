@@ -1,0 +1,7 @@
+{
+    "proxy": "http://46.101.121.186:1697",
+    "urlSheetName": "toscrape.csv",
+    "skipProxyCheck": true,
+    "headless": true,
+    "emailTo": "nick.colletti@emxdigital.com"
+}
