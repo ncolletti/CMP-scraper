@@ -173,15 +173,19 @@ const scraper = {
         console.log(`Connecting to Chrome with proxy url: ${config.proxy}`);
 
         // launch browser
-        this.browser = await puppeteer.launch({
-            headless: config.headless,
-            args: [`--proxy-server=${config.proxy}`,
-                '--ignore-certificate-errors',
-                '--no-sandbox',
-                '--diable-setuid-sandbox'
-            ],
-            ignoreHTTPSErrors: true
-        });
+        try {
+            this.browser = await puppeteer.launch({
+                headless: config.headless,
+                args: [`--proxy-server=${config.proxy}`,
+                    '--ignore-certificate-errors',
+                    '--no-sandbox',
+                    '--diable-setuid-sandbox'
+                ],
+                ignoreHTTPSErrors: true
+            });
+        } catch (err) {
+            console.log(`There was an error launching Chrome! ${err}`);
+        }
 
         this.scanUrlList();
     },

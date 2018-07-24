@@ -41,6 +41,9 @@ const writer = {
             for (let item of urlList) {
                 urlArray.push(item.urls)
             }
+        }).catch((err) => {
+            // file name error
+            console.log(`There was a problem with your file ${err}`);
         })
 
         return new Promise(function (resolve) {
